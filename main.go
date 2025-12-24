@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -66,7 +67,7 @@ type Autoscaler struct {
 	// mu 保护扩缩容过程的互斥锁
 	mu sync.Mutex
 	// lastScaleAt 上次扩缩容发生的时间，用于冷却控制
-	lastScaleAt time.Time
+	lastScaleAt        time.Time
 	autoscalingEnabled bool
 }
 
@@ -444,23 +445,29 @@ func (a *Autoscaler) status(ctx context.Context) (map[string]any, error) {
 		return nil, err
 	}
 	return map[string]any{
-		"pending":          p,
-		"replicas":         cur,
-		"service":          a.cfg.ServiceName,
-		"project":          a.cfg.ProjectName,
+		"pending":             p,
+		"replicas":            cur,
+		"service":             a.cfg.ServiceName,
+		"project":             a.cfg.ProjectName,
 		"autoscaling_enabled": a.isAutoscalingEnabled(),
-		"last_scale_at":    a.lastScaleAt.Unix(),
-		"scale_up_th":      a.cfg.ScaleUpThreshold,
-		"scale_down_th":    a.cfg.ScaleDownThreshold,
-		"min_replicas":     a.cfg.MinReplicas,
-		"max_replicas":     a.cfg.MaxReplicas,
-		"cooldown_sec":     int(a.cfg.Cooldown.Seconds()),
-		"monitor_interval": int(a.cfg.MonitorInterval.Seconds()),
+		"last_scale_at":       a.lastScaleAt.Unix(),
+		"scale_up_th":         a.cfg.ScaleUpThreshold,
+		"scale_down_th":       a.cfg.ScaleDownThreshold,
+		"min_replicas":        a.cfg.MinReplicas,
+		"max_replicas":        a.cfg.MaxReplicas,
+		"cooldown_sec":        int(a.cfg.Cooldown.Seconds()),
+		"monitor_interval":    int(a.cfg.MonitorInterval.Seconds()),
 	}, nil
 }
 
 // main 初始化依赖、兜底创建 Stream/Group、启动调谐循环，并暴露 HTTP 接口。
 func main() {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		log.Panicf("load location failed: %v", err)
+	}
+	time.Local = loc
+
 	cfg := loadConfig()
 	rdb := newRedis(cfg)
 	cli, err := newDockerClient()
